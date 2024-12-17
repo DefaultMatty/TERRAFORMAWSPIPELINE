@@ -1,0 +1,23 @@
+[
+    {
+        "name": "bot_behavioural_customer_data",
+        "folder": "bot",
+        "subfolder": "behavioural_customer_data",
+        "columns": {
+            "CustomerId": "VARCHAR(255)",
+            "browsed_highlights": "BIT",
+            "browsed_live": "BIT",
+            "browsed_store": "BIT",
+            "browsed_ticketing": "BIT",
+            "browsed_highlights_and_live": "BIT",
+            "bought_ticket": "BIT",
+            "Country": "VARCHAR(255)",
+            "AgeGroup": "VARCHAR(255)",
+            "Language": "VARCHAR(255)",
+            "Gender": "VARCHAR(255)",
+            "FavouriteClub": "VARCHAR(255)",
+            "PopularNationalTeam": "VARCHAR(255)"
+        }
+       
+    }
+]

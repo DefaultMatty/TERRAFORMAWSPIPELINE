@@ -1,0 +1,790 @@
+try {
+	var alConfig = JSON.parse(sessionStorage.getItem('com.adobe.alConfig')) || {};
+} catch (objError) {
+	var alConfig = {};
+	if (/development|staging/.test(_satellite.environment.stage) || localStorage.getItem('com.adobe.alMcLogging') == 'true') console.log('### ADL. alConfig parse error, overwrite');
+}
+//previous page persisted info
+try {
+	var ppInfo = JSON.parse(sessionStorage.getItem("com.adobe.ppInfo")) || {}; //historical data to persist eg session referrer, userdata and urlparams
+} catch (objError) {
+	var ppInfo = {};
+	if (/development|staging/.test(_satellite.environment.stage) || localStorage.getItem('com.adobe.alMcLogging') == 'true') console.log('### ADL. ppInfo parse error, overwrite');
+}
+//catch errors
+ppInfo.uP = ppInfo.uP || {};
+ppInfo.uS = ppInfo.uS || {};
+
+var channel ='' ; 
+
+if(location.hostname.substring(0, 9)=='www.fifa.')
+	{channel = location.hostname.replace(/\//g,":").split('.')[1]+location.hostname.replace(/\//g,":").split('.')[2];} 
+else if(location.hostname.substring(0, 9)=='www.plus.')
+	{channel = location.hostname.replace(/\//g,":").split('.')[1]+location.hostname.replace(/\//g,":").split('.')[2];}
+else 
+    {channel =  location.hostname.replace(/\//g,":").replace('www.','').split('.')[0]; }
+
+
+var logging = alConfig.logging,
+    ruleTag = '240524-ADL_DLC_',
+	dataLayerStart = parseInt(sessionStorage.getItem("com.adobe.adataLayerS")) || 0,
+    mediaInfo = '',
+	pInfo = ppInfo, //current page info set to previous page info (i.e. events happen after page load), reset below for new screen view
+	tracker = _satellite.getVar("tracker"),
+    ort = sessionStorage.getItem("com.adobe.ort") || "false",					//original session tracked for case of opt-in during session, set at s.t()
+	oRide = {};																	//used when only sending partial data to override e.g. on page event in which original page data is persisted
+
+	pInfo.ruleTag = ruleTag;
+	
+if_mc_logging("------FPDL dataLayerStart: ", dataLayerStart, " adobeDataLayer length: ", adobeDataLayer.length);
+sessionStorage.setItem("com.adobe.adataLayerS", adobeDataLayer.length);
+
+//iterate events
+for(dli = dataLayerStart; dli < adobeDataLayer.length; dli++) {
+	var dl = adobeDataLayer[dli];
+	
+	if_mc_logging('------FPDL iterating:', dli, adobeDataLayer[dli].event , 'dl:', JSON.stringify(adobeDataLayer[dli]), '-------');
+	switch (dl.event || '') {
+		case 'screen_view':	
+			pageLoaded();
+			updatePinfo(); //update pInfo and ppInfo
+            if_mc_logging('------ADL adobeDataLayer pageLoaded sent for event :',dl.event );
+            break;
+		case 'userStatus':
+			if ((alConfig.DataPage)) {
+				ppInfo.uS = dl; //add user status data to previous page
+				pInfo.uS = dl; //add user status data to current page (in case in this loop for multiple events)
+				updatePinfo(); //update pInfo and ppInfo
+				if_mc_logging('------ADL adobeDataLayer userStatus updated in pInfo and ppInfo:',dl );
+			} else { if_mc_logging('------ADL adobeDataLayer userStatus NOT updated, opted-out:',dl ); }
+			break;
+        case 'video':
+//            if(alConfig.AnaPage){ 
+				videoTracking ();
+				if_mc_logging('------ADL adobeDataLayer Video tracking sent for event :',dl.action);
+//            }
+            break;
+        case 'OverlayBanner':
+        case 'CloseBanner':
+        case 'NavClickBanner':
+				bannerTracking();
+				if_mc_logging('------ADL adobeDataLayer Banner tracking sent for event :',dl.event, oRide);
+        	break;
+		case 'asset_click':
+				assetTracking();
+				if_mc_logging('------ADL adobeDataLayer Asset tracking sent for event :',dl.event, oRide);
+			break;
+		case 'favouriteChange':
+		     	favouriteTracking();
+				if_mc_logging('------ADL adobeDataLayer favourite tracking sent for event :',dl.event, oRide);
+			break;
+		case 'searchLoad':
+		case 'searchClick':
+			searchTracking();
+			if_mc_logging('------ADL adobeDataLayer Search tracking sent for event :',dl.event, oRide);
+			break;
+        
+        case 'analytics_event':
+			analyticsEvent();
+			if_mc_logging('------CDL adobeDataLayer Analytics Event tracking sent for event :',dl.event, oRide);
+			break;
+        
+        default:
+            break;
+	} 
+
+}
+if_mc_logging('-----ADL adobeDataLayer iterating COMPLETE:', dli, '-----' );
+return;	
+
+
+function bannerTracking() {
+
+	ruleTag = ruleTag + "B";
+	oRide.eVar46 = dl.event;
+	oRide.list3 = dl.asset || '';
+    oRide.eVar109 = dl.asset || '';
+	if (dl.asset) oRide.eVar84 = dl.asset + ":" + dl.event; 	//
+	if (dl.event == 'Overlay Banner' || dl.event == 'OverlayBanner') {
+		ruleTag = ruleTag + "OB";
+		oRide.events = "event5";
+	} else if (dl.event == 'Close Banner' || dl.event == 'CloseBanner') {
+		ruleTag = ruleTag + "CB";
+		if(/(Wall|Onboarding)(Soft)/.test(dl.asset)){
+          oRide.eVar72 = dl.asset || '';}
+        else
+          {oRide.eVar72 = "Action: "+s.eVar43 +" | "+
+                          "Type: " + dl.asset_type	+" | "+
+                          "Name: "+dl.asset_name ||''; }
+		oRide.events = "event28";
+	} else if (dl.event == 'NavClickBanner') {
+		ruleTag = ruleTag + "NCB";
+		oRide.events = "event4,event28";
+		oRide.eVar41 = dl.navigateToUrl || '';
+		oRide.eVar48 = "Navigation Click";
+		if(/(Wall|Onboarding)(Soft)/.test(dl.asset)){
+          oRide.eVar72 = dl.asset || '';}
+        else
+          {oRide.eVar72 = "Action: "+s.eVar43 +" | "+
+                          "Type: " + dl.asset_type	+" | "+
+                          "Name: "+dl.asset_name ||''; }
+        } 
+        else oRide.events = "";
+    oRide.eVar99 = ruleTag;
+	s.tl(true, 'o', dl.event, oRide);
+}
+
+function assetTracking() {
+
+	ruleTag = ruleTag + "AC";
+    var assetevents ='';
+   
+    if (dl.click_action){
+      if(dl.click_action == 'Navigation Expand' && dl.click_action=='Download Link'){
+         assetevents =  "event9";
+      }
+    
+    else if (dl.click_action == 'Exit Link'){
+      assetevents =  "event4";
+      }
+    }
+      
+    else{assetevents =  "event4";}
+	assetevents += ",event28"
+  
+    oRide.events = assetevents;
+    oRide.eVar41 = dl.navigateToUrl || '';
+	oRide.eVar46 = dl.event || '';
+	oRide.eVar48 = dl.click_action || '';
+	oRide.list3 = dl.asset || '';
+    oRide.eVar109 = dl.asset || '';
+	oRide.eVar84 = dl.asset ||''; 	
+
+    //
+	if(dl.navigateToPage){
+      oRide.eVar72 =
+        "Action: "+	s.eVar43 +" | "+
+        "Type: " + dl.asset_type	+" | "+
+        "Page: "+dl.navigateToPage ||'';}
+    else{
+      oRide.eVar72 = "Action: "+s.eVar43 +" | "+
+                     "Type: " + dl.asset_type	+" | "+
+                     "Name: "+dl.asset_name ||''; }
+    
+	oRide.eVar73 = dl.navigateToUrl||'';
+    oRide.eVar99 = ruleTag;
+    var clickContextA = dl.asset_type || '';
+    var clickContextAN = dl.asset_name || '';
+    oRide.prop74= clickContextA+': '+ clickContextAN;
+  
+	s.tl(true, 'o', dl.event, oRide);
+}
+
+function favouriteTracking(){
+	ruleTag = ruleTag + "FC";
+    oRide.events =  "event115";
+	oRide.eVar30 = dl.favourite_team  || '';
+	oRide.eVar158 = dl.favourite_team_id  || '';
+	oRide.eVar47 = dl.favourite_league  || '';
+	oRide.eVar159 = dl.favourite_league_id  || '';
+    oRide.eVar160 = dl.favourite_player  || '';
+	oRide.eVar161 = dl.favourite_player_id  ||''; 	//
+	oRide.eVar46 = dl.event || '';
+    oRide.eVar99 = ruleTag;
+	s.tl(true, 'o', dl.event, oRide);
+
+}
+//////////////////////
+function searchTracking() {
+	
+	if (/searchLoad/.test(dl.event)) {		
+	  ruleTag = ruleTag + "_SRCH";
+	  oRide.events = "event108";
+	  oRide.eVar1 = dl.searchTerm || '';
+      oRide.eVar8 = dl.screen_name || '';
+      
+      oRide.eVar143 = dl.numberOfKeywords || '';
+      oRide.eVar144 = dl.filterApplied || '';
+      oRide.eVar145 = dl.filterContentTag || '';
+      oRide.eVar146 = dl.filterSearchTerms || '';
+      oRide.eVar147 = dl.numberOfFilters || '';
+      oRide.eVar148 = dl.quickSearch || '';
+      // Add eVar for numberOfKeywords
+      //oRide.eVar1 = dl.numberOfKeywords || '';
+	  if (!oRide.eVar46) oRide.eVar46 = dl.event;
+	}
+	else if(/searchClick/.test(dl.event)) {
+		   ruleTag = ruleTag + "_SAC";
+           oRide.events = "event1";
+           // Add eVar for numberOfKeywords
+           //oRide.eVar1 = dl.numberOfKeywords || '';
+	       oRide.eVar1 = dl.searchTerm || '';
+           oRide.eVar8 = dl.screen_name || '';
+           oRide.eVar72 =
+                    "Action: "+	s.eVar43  +" | "+
+                    "Type: " + dl.event	+" | "+
+                    "Page: "+dl.navigateToPage ||'';
+           oRide.eVar143 = dl.numberOfKeywords || '';
+           oRide.eVar144 = dl.filterApplied || '';
+           oRide.eVar145 = dl.filterContentTag || '';
+           oRide.eVar146 = dl.filterSearchTerms || '';
+           oRide.eVar147 = dl.numberOfFilters || '';
+           oRide.eVar148 = dl.quickSearch || '';
+	       if (!oRide.eVar46) oRide.eVar46 = dl.event;
+	}
+			  
+			
+	
+	s.tl(true, 'o', dl.event, oRide);
+}
+
+function analyticsEvent(){
+	var analyticsevents ='';
+	ruleTag = ruleTag + "AE";
+	if(dl.assets_viewed){
+		oRide.list3 = dl.assets_viewed || '';
+		if(analyticsevents==''){
+			analyticsevents  = "event5";}
+		else{
+			analyticsevents  += ",event5";}
+	}
+	if(dl.highest_scroll_percentage){
+		oRide.eVar117 = dl.highest_scroll_percentage||'';
+		if(analyticsevents==''){
+			analyticsevents  = "event99";}
+		else{
+			analyticsevents  += ",event99";}
+	}
+	oRide.events = analyticsevents;
+	oRide.eVar46 = dl.event || '';
+
+	s.tl(true, 'o', dl.event, oRide);
+}
+
+
+function pageLoaded() {
+    pInfo = {};		//reset current page info
+	pInfo.ruleTag = ruleTag + "ADLPL";		
+	pInfo.dr = document.referrer;
+	pInfo.uS = {};
+	pInfo.uP = _satellite.getVar('URLParams') || {};		// latest url params
+	pInfo.uP.cid = dl.cid || pInfo.uP.cid || '';			// dataLayer over urlParams
+	pInfo.uP.intcmp = dl.intcmp || pInfo.uP.intcmp || '';	// dataLayer over urlParams	
+	
+//Persist previous data	
+	if (alConfig.DataPage && !/\/logout$/.test(dl.screen_name)) pInfo.uS = ppInfo.uS || {};	//persist user status if opted-in and not logged out (screen_name like en/logout)
+	//track original referrer and campaigns if never tracked
+	if (ort != "true") {
+		pInfo.dr = ppInfo.dr || pInfo.dr;		//referrer
+		pInfo.uP.cid = ppInfo.uP.cid || pInfo.uP.cid || '';		//
+		pInfo.uP.intcmp = ppInfo.uP.intcmp || pInfo.uP.intcmp || '';		
+	} 
+
+//initiate analytics
+	var tPageName ='',
+	    providerid = '';
+
+	if(dl.pageTitle){
+		tPageName = dl.pageTitle;
+	}else {tPageName = dl.screen_name || '';}
+
+	if(dl.fifaSPID){
+		providerid=dl.fifaSPID;
+	}else {providerid=dl.user_id ||'';}
+
+    s.clearVars();
+
+	
+//Only track ids where opted-in
+	if (alConfig.DataPage) {
+		if_mc_logging('------ADL pageLoaded updating status');		
+		//s.eVar22 = dl.user_id || '';
+		s.eVar26 = providerid||'';			// dl.device_id || '';	//Use device id? need to confirm
+		//s.eVar27 = (pInfo.uS.dateOfBirth || '').split("T")[0];
+		//s.eVar28 = dl.gender || '';
+		//s.eVar32 = (pInfo.uS.countryOfResidence || '').toLowerCase();
+		s.eVar93 = alConfig.lotId;
+		s.eVar94 = alConfig.tealId;
+		s.eVar96 = dl.device_id;	
+	} else if_mc_logging('------ADL pageLoaded NOT updating status');
+	
+
+    s.pageName = channel+ ':' + tPageName;    
+    s.events = 'event2';
+    s.channel = channel;	    
+	s.eVar5 = dl.pageType || ''; 
+    s.eVar8 = 'D=pageName';
+    s.eVar9 = channel;
+    s.eVar11 = dl.language || '';
+	s.eVar12 = dl.pageSlug || '';
+    // Review when more hierachy available in tracking (originals/archive)
+    s.eVar15 = s.channel + ':' + tPageName;
+    
+	// user_id only populated if logged in on Chili
+	if(pInfo.uS.status){
+      s.eVar25 = pInfo.uS.status;}
+    else if(dl.user_id) {
+		s.eVar25 = "logged in";
+	}else s.eVar25 = "not logged in";
+	
+	
+	
+	s.eVar34 =  (document.title || '').toLowerCase();
+	sysEnv = alConfig.sysEnv || '';
+    if(alConfig.sysEnv==channel && dl.platform) {
+        sysEnv = channel+dl.platform ||'' ;
+      }
+    s.eVar43 = sysEnv;		
+    s.eVar46 = 'Page View';	
+    s.eVar55 = dl.page_status || '';
+    s.eVar65 = dl.pageParentID || '';
+    if (dl.pageParentTitle){
+		s.eVar66 = pageParentTitle ;
+	}
+    else {s.eVar66 = tPageName ||'';}
+	
+	s.eVar69 = dl.issueDate || '';
+    s.eVar70 = location.hostname + location.pathname;
+    s.eVar75 =(channel + ' ' + dl.app_version ) || ''; 
+	s.eVar81 = alConfig.OTPrefs || alConfig.DidomiPrefs || '';
+    s.eVar86 = pInfo.dr;
+    s.eVar95 = 'D=mid';	
+
+//urlParams
+	//?cid=0.cid&q=1.q&intcmp=2.intcmp&s_oid=3.s_oid&s_pid=6.s_pid&s_cid=82.s_cid&linkid=83.linkid&c=102.c--&pid=102.pid&utm_campaign=68.utm_campaign&utm_source=103.utm_source&utm_medium=104.utm_medium&utm_term=105.utm_term&utm_content=106.utm_content
+	s.eVar3 = pInfo.uP.s_oid || ''; //post id
+	s.eVar4 = pInfo.uP.s_uid || '';	//user id
+	s.eVar6 = pInfo.uP.s_pid || ''; //paid
+	s.eVar82 = pInfo.uP.s_cid || '';	//targeting
+	s.eVar83 = pInfo.uP.linkid || '';		//link
+	if (pInfo.uP.c || pInfo.uP.pid || pInfo.uP.c || pInfo.uP.pid) {
+		var cpid = (pInfo.uP.c || '') + (pInfo.uP.pid || '');
+		//s.events += ",event25";
+		s.eVar102 = cpid;
+	}
+
+// utm variables
+    s.eVar68 = dl.utm_campaign || '';
+    s.eVar103 = dl.utm_source || ''; 
+    s.eVar104 = dl.utm_medium || ''; 
+    s.eVar105 = dl.utm_term || ''; 
+    s.eVar106 = dl.utm_content || ''; 
+	
+//other dl mappings
+    s.eVar108 = dl.device_store || '';
+	s.eVar112 = dl.video_asset_type || '';
+	s.eVar133 = dl.contentTags || '';
+	s.eVar134 = "Tag Length. Ids- #Chars:" + (s.eVar133 || []).length;
+    s.eVar153 = dl.country || '';
+    s.eVar154 = dl.device_model || '';
+    s.eVar155 = dl.resolution || '';
+
+
+	////////////////////////////
+    //campaigns
+	if_logging("-----ADL. fn. cid and intcmp tracking from urlParams. pInfo.uP.cid:", pInfo.uP.cid, ". pInfo.uP.intcmp:", pInfo.uP.intcmp);
+    
+    //external (cid) campaign
+	if (pInfo.uP.cid) { 		
+        s.campaign = pInfo.uP.cid || '';
+		//if campaign exists and (originating campaign not tracked or new campaign)
+		if (pInfo.uP.cid != '' && (ort != "true" || pInfo.uP.cid != ppInfo.uP.cid)){
+            s.events += ',event30';
+        }
+		if_mc_logging("-----ADL. fn. cid set", s.events, s.campaign);
+	}
+	
+    //internal (intcmp) campaign
+	if (pInfo.uP.intcmp) { 		
+        s.eVar2 = pInfo.uP.intcmp || '';
+		//if campaign exists and (originating campaign not tracked or new campaign)
+		if (pInfo.uP.intcmp != '' && (ort != "true" || pInfo.uP.intcmp != ppInfo.uP.intcmp)){
+            s.events += ',event29';
+        }
+		if_mc_logging("-----ADL. fn. cid set", s.events, s.campaign);
+	}
+	
+    ////////////////////////////////////////////////////////////
+    
+    // Add Video parameters for Video pages
+    if(dl.screen_type){
+        if(dl.screen_type.toLowerCase()=='player'||dl.screen_type.toLowerCase()=='content'){
+            var season_number  = dl.video_season_number || '',
+                episode_number = dl.video_episode_number ||'',
+                series_name = dl.video_series_name||'',
+                asset_id = dl.video_asset_id ||'',
+                video_cat= '';
+                video_title = '';    
+       
+            if (dl.videoTitle){
+                video_title = dl.videoTitle;
+            }
+            else {video_title = tPageName||'';}
+        
+            if (dl.videoCategory){
+                video_cat = dl.videoCategory;
+            }
+            else {video_cat = dl.screen_type||'';}
+
+            s.eVar120 = dl.local_video_title || '';
+            
+            s.eVar121 =video_title + '|' +  season_number + '|' +  episode_number + '|' + series_name+'|'+ asset_id
+            s.eVar122 =channel;
+            s.eVar123 = dl.video_asset_id|| '';
+            s.eVar124 = dl.video_asset_id|| '';
+       //s.eVar125 done in processing rules
+            s.eVar126 = video_cat ||'';
+            s.eVar127 = dl.video_asset_type || '';
+            s.eVar128 = dl.section || '';
+        }
+    }
+    /////////////////////////////////////////////////////
+
+	//Pixels
+	//s is satellite object with all variables - capture so can use in pixelevents or on-page opt-in
+	for (var key in s) { 
+		if (/^(eVar|events|channel|pageName|campaign)/.test(key)) {
+			pInfo[key] = s[key];
+		}
+	}
+	
+    if (alConfig.TealPage || alConfig.LotPage || alConfig.PixPage) {
+			if (alConfig.TealPage) {pInfo.ruleTag += ',TE';}
+			if (alConfig.LotPage) {pInfo.ruleTag += ',LO';}
+			if (alConfig.PixPage) {
+				pInfo.ruleTag += ',PI';
+				s.events +=',event86';	//pixel event called
+			}
+			if (channel == 'plusfifa'){
+				pInfo.pixEvent = "F+ Chili Page View";}
+              if_mc_logging('-----ADL analyticsPageView fn. FPPixelEvents Called***');
+			  _satellite.track('PixelEvents', {rule: "F+PVEvent", alConfig: alConfig, cEvents: pInfo});	
+	} else if_mc_logging('-----ADL analyticsPageView fn. FPPixelEvents NOT Called***'); 
+	////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////		
+
+    s.eVar99 = pInfo.ruleTag;   
+	
+    //Analytics
+    if(alConfig.AnaPage) {
+       sessionStorage.setItem("com.adobe.ort", true);	//update flag that originating referrer tracked
+	   	if (/sign-(in|up)-delegated/.test(pInfo.uS.action)) {
+			s.eVar46 += " After " + pInfo.uS.action;	//track delegated sign-in/up Action e.g. Page View After sign-in-delegated 
+			pInfo.uS.action = (pInfo.uS.action || '').replace("delegated", "d'gated");					//change action name to prevent multiple events
+			if_logging('------ADL adobeDataLayer page loaded, delegated sign-in/up Action tracked:', s.eVar46, '***');	
+		} else if_logging('------ADL adobeDataLayer page loaded, delegated sign-in/up Action NOT tracked:', pInfo.uS.action, 'Test:', /sign-(in|up)-delegated/.test(pInfo.uS.action), '***');	
+	   s.t();
+	   if_logging('------ADL adobeDataLayer page loaded and tracked into Adobe Analytics, pageName:', s.pageName, '***');	
+    } 
+	ppInfo = pInfo;		//on load of new page previous and current page set the same
+}
+
+
+///////////////////////////
+
+function videoTracking() {
+    var action = dl.action || '';    
+	if (!action) return;
+
+    var Media = ADB.Media,
+		videoId = (dl.video_asset_id||'').toString(),
+		sysEnv = alConfig.sysEnv || '',
+        previousPage= '';
+        if_mc_logging("------CTVA trackVideoAction retrieved. ", dli , ". tracker:", tracker);
+        
+        if(alConfig.sysEnv==channel && dl.platform) {
+          sysEnv = channel+dl.platform ||'' ;
+        }
+        if(dl.previous_video){
+		   previousPage=channel+':'+dl.previous_video||'';
+          
+        }
+	
+    var	video_cat= '',
+		video_sub_cat = '',
+	    video_title = '';
+
+       
+	if (dl.videoTitle){
+		video_title = dl.videoTitle;
+	}else {video_title = dl.screen_name||'';}
+
+	if (dl.videoCategory){
+	video_cat = dl.videoCategory;
+	}else{ video_cat = dl.screen_type||'';}
+	
+	if (dl.videoSubcategory){
+		video_sub_cat = dl.videoSubcategory;
+		}else{ video_sub_cat = dl.screen_type_2||'';}
+			
+    
+   
+    switch(action) {
+        case 'pre_play_event': // media ad tracking splits pre_play_event and play event
+		//case 'play': 
+	        var metadata ={
+		       'f.m.pageName': channel+":"+ dl.screen_name || '', 
+		       'f.m.pageLanguage':dl.language || '',		
+	    	   'f.m.vInternalTitle':video_title || '', 	
+               'local_video_title' : dl.local_video_title || '',
+	     	   'video_asset_id':videoId,	
+	    	   'f.m.url':location.hostname + location.pathname, 	
+	    	   'f.m.sysEnv':sysEnv,
+			   'f.m.pageTitle':(document.title || '').toLowerCase(), 						
+	    	   'video_resolution' : dl.video_resolution || '',
+               'resolution' : dl.resolution || '',
+			   'video_asset_type' : dl.video_asset_type || '',
+               'passive' : dl.passive || '',
+               'screen_type' : video_cat || '',
+               'screen_type_2' : video_sub_cat || '',
+               'f.m.section' : channel || '',
+               'country' : dl.country  || '',
+               'device_model': dl.device_model || '',
+               'app_version':  dl.app_version || '',
+               'screen_name' : dl.screen_name || '',
+               'contentTags' : dl.contentTags || '',
+			   'video_season_number' : dl.video_season_number || '',
+			   'video_episode_number' : dl.video_episode_number ||'',
+		       'video_series_name' : dl.video_series_name||'',
+               'autoPlay' : dl.auto_play || '',
+               'previousPage' : previousPage,
+		    }; 
+	        tracker.metadata = metadata;
+
+	        var videoTitle = video_title || ''; //case where loadedmetadata before internalTitle available
+	        if_mc_logging("------CTVA trackVideoAction loadedmetadata. ", dli , ". videoTitle:", videoTitle);
+	
+	
+	        if (dl.video_asset_type.toLowerCase() =='live'){
+	        	mediaInfo = Media.createMediaObject(videoTitle, dl.video_asset_id, 9999, "Live", Media.MediaType.Video);
+	        	if_mc_logging("------CTVA trackVideoAction loadedmetadata. ", dli , ".  LiveStream");
+	        }
+	        else{
+	        	mediaInfo = Media.createMediaObject(videoTitle, dl.video_asset_id, parseInt(dl.video_duration), "VOD", Media.MediaType.Video);
+	   	    }
+	
+	        tracker[videoId] = Media.getInstance();
+	        tracker[videoId].trackSessionStart(mediaInfo, metadata); 
+	        tracker[videoId].isBuffering = false;
+	        tracker[videoId].isAdPlaying = false;
+///* 
+			//media ad tracking splits pre_play_event and play event
+			if_mc_logging("------CTVA trackVideoAction.", dli, ".  Event:", action, ". Adobe Event: trackSessionStart videoId:", videoId, "tracker:", tracker[videoId]);
+			break;
+	    	
+        case 'play':
+//*/
+	    	tracker[videoId].trackPlay();
+			//track legacy video event
+			s.eVar8 = channel+":"+ dl.screen_name || '';
+            s.pageName = "";	//reset to not increment page view (Adobe should not on s.tl, but does on some event types.
+			s.eVar46 = "Video Start";
+			s.events = "event12";
+			s.eVar99 = pInfo.ruleTag+",VP";
+			s.eVar110 = previousPage; 
+            s.eVar127 = dl.video_asset_type || '';
+            s.eVar137 = dl.auto_play || '';
+              
+            
+			s.tl(true,"o","Video Start");
+			
+	        if_mc_logging("------CTVA trackVideoAction.", dli, ".  Event:", action, ". Adobe Event: 'trackPlay()' videoId:", videoId, "tracker:", tracker[videoId]);
+
+			//Pixels
+            if (alConfig.TealPage || alConfig.LotPage || alConfig.PixPage) {
+                pInfo.pixEvent = "Video Playing";
+                if_mc_logging("------CTVA trackVideoAction. FPPixelEvents Called firstPlaying***");
+                _satellite.track('PixelEvents', {rule: "cVideo", alConfig: alConfig, cEvents: pInfo});	
+            } else if_mc_logging("------CTVA trackVideoAction. FPPixelEvents NOT Called firstPlaying***");	        
+			break;
+        
+
+
+ ///*     media ad tracking when pre_play_event and play event  split on all platforms
+		case 'ad_break_begin':
+                
+            var adBreakName ='';
+            if (dl.video_position == 0){
+                adBreakName = 'pre-roll'
+            }else if(dl.video_position==dl.video_duration){
+                adBreakName='post-roll'
+            } else {
+                adBreakName='mid-roll'
+            }
+            
+            if_mc_logging("------CTVA trackVideoAction.", dli, ".  Event:", action, ". Adobe Event: 'isAdPlaying()' videoId:", videoId, "tracker:", tracker[videoId]);
+	        
+            var positionOfAdbreak = parseInt(dl.video_position)+1;
+            var startTime = dl.video_position;
+            var adBreakObject = Media.createAdBreakObject(adBreakName, positionOfAdbreak , startTime);
+            tracker[videoId].trackEvent(Media.Event.AdBreakStart, adBreakObject);
+            tracker[videoId].isAdPlaying=true;          
+            break;
+//*/            
+        case 'ad_begin':
+           
+            if_mc_logging("------CTVA trackVideoAction.", dli, ".  Event:", action, ". adBegin on videoId:", videoId, "tracker:", tracker[videoId]);
+// /*     media ad tracking when pre_play_event and play event split on all platforms
+			var adName = dl.ad_name || '';
+            var adId = dl.ad_id || '';
+            var adPos = parseInt(dl.video_position)+1;
+            var duration = parseInt(dl.ad_duration);       
+            var adObject = Media.createAdObject(adName, adId, adPos, duration); 
+            tracker[videoId].trackEvent(Media.Event.AdStart, adObject, tracker.metadata);
+            if_mc_logging("------CTVA trackVideoAction.", dli, ".  Event:", action, ". adBegin on videoId:", videoId, "tracker:", tracker[videoId]);
+//*/
+              //track legacy ad event
+            s.eVar8 = channel+":"+ dl.screen_name || '';
+            s.pageName = "";	//reset to not increment page view (Adobe should not on s.tl, but does on some event types.
+            s.eVar46 = "Video Ad Start";
+			s.events = "event132";
+            s.eVar99 = pInfo.ruleTag+",AB";
+            s.eVar110 = previousPage; 
+            s.eVar127 = dl.video_asset_type || '';
+            s.eVar137 = dl.auto_play || '';
+            s.tl(true,"o","Ad Begin");
+            break;
+///*     media ad tracking when pre_play_event and play event split on all platforms
+        case 'ad_skip':
+		    tracker[videoId].trackEvent(Media.Event.AdSkip);  
+            if_mc_logging("------CTVA trackVideoAction.", dli, ".  Event: AdSkip on videoId:", videoId, "tracker:", tracker[videoId]);             
+		
+    		break;
+
+        case 'ad_complete':
+            tracker[videoId].trackEvent(Media.Event.AdComplete);
+            if_mc_logging("------CTVA trackVideoAction.", dli, ".  Event: AdComplete on videoId:", videoId, "tracker:", tracker[videoId]);        
+            break;
+    
+        case 'ad_break_end':
+            tracker[videoId].trackEvent(Media.Event.AdBreakComplete);
+            tracker[videoId].isAdPlaying=false;
+            if_mc_logging("------CTVA trackVideoAction.", dli, ".  Event: AdBreakEnd on videoId:", videoId, "tracker:", tracker[videoId]);        
+            break;
+
+
+        // case 'ad_position':
+        //     updatedAdPlayhead();
+        //     if_mc_logging("------CTVA trackVideoAction.", dli, ".  Event:", action, ". Adobe Event: 'updatePlayhead()'");
+        //     break;     
+
+//*/
+
+
+        
+
+	    case 'resume':
+          updatedPlayhead();
+          tracker[videoId].trackPlay();
+	      if_mc_logging("------CTVA trackVideoAction.", dli, ".  Event:", action, ". Adobe Event: 'trackPlay()'");
+	    
+	      break;
+
+	    case 'pause':
+          
+          updatedPlayhead();
+          tracker[videoId].trackPause();
+	      if_mc_logging("------CTVA trackVideoAction.", dli, ".  Event:", action, ". Adobe Event: 'trackPause()'");
+	   
+	      break;	
+		
+		
+    	case 'exit' :
+            updatedPlayhead();
+    		if (tracker[videoId]) tracker[videoId].trackSessionEnd(); //catch tracker[videoId] does not exist - spurious cases of exit event without intiating play event
+    		delete tracker[videoId];	
+    		if_mc_logging("------CTVA trackVideoAction.", dli, ".  Event:", action, ". Adobe Event: 'trackSessionEnd()'");
+	   
+    		break;
+        case 'end' :
+            updatedPlayhead();
+            tracker[videoId].trackComplete();
+			//track legacy video event
+			s.eVar8 = channel+":"+ dl.screen_name || '';
+            s.pageName = "";	//reset to not increment page view (Adobe should not on s.tl, but does on some event types.
+			s.eVar46 = "Video Finish";
+			s.events = "event13";
+			s.eVar99 = pInfo.ruleTag+",VE";
+			s.tl(true,"o","Video End");
+
+            /////////////
+            // Below not required based on current structure with End followed by exit event
+            //tracker[videoId].trackSessionEnd();
+            //delete tracker[videoId];	
+            
+            if_mc_logging("------CTVA trackVideoAction.", dli, ".  Event:", action, ". Adobe Event: 'trackComplete()'");
+           
+            break;
+	
+    	case 'position':
+			
+            updatedPlayhead();
+    		if_mc_logging("------CTVA trackVideoAction.", dli, ".  Event:", action, ". Adobe Event: 'updatePlayhead()'");
+	
+    	    break; 
+	
+    	case 'seek':
+			
+            updatedPlayhead();
+	    	tracker[videoId].trackEvent(Media.Event.SeekComplete);   
+
+	    	if_mc_logging("------CTVA trackVideoAction.", dli, ".  Event:", action, ". Adobe Event: 'trackEvent(Media.Event.SeekComplete)'");
+	
+	        break; 
+	
+	    //case 'options_quality':
+	  	/////////////////////////////////////
+        // requires: 
+        // bitrate - available as video_bitrate
+        // currentBandwidthEstimate
+        // timeToFirstFrameInMS
+        // frameRate
+        // droppedVideoFrames
+	    //    break;
+        //case 'options_language_subtitle':
+	    //	
+	    //     break;
+
+  
+	    default:  
+    }
+    _satellite.setVar("tracker",tracker);
+}
+
+
+/////////////////////////////////
+//update pageInfo
+function updatePinfo () {
+	pInfo.ruleTag = ruleTag;		//reset on each iteration
+	if (logging) {
+		if (!(alConfig.DataPage)) { console.log('------ADL update pInfo & ppInfo. Stored Reduced pInfo:', pInfo); }
+		else {console.log('------ADL update pInfo & ppInfo. Stored FULL pInfo:', pInfo); }
+	}
+	sessionStorage.setItem("com.adobe.pInfo", JSON.stringify(pInfo));
+	sessionStorage.setItem("com.adobe.ppInfo", JSON.stringify(ppInfo));	
+}
+
+function if_logging (...inputtext){
+    if (alConfig.logging) console.log(...inputtext);
+
+}
+
+function if_mc_logging (...inputtext){
+    if (alConfig.mclogging) console.log(...inputtext);
+
+}
+
+function updatedPlayhead(){
+    if (dl.video_position){
+        var videoId = dl.video_asset_id.toString() || '';
+        var playhead = parseInt(dl.video_position);
+        tracker[videoId].updatePlayhead(playhead);
+      }
+}
+
+// function updatedAdPlayhead(){
+//     if (dl.ad_position){
+//         var adId = dl.ad_id.toString() || '';
+//         var adPlayhead = parseInt(dl.ad_position);
+//         tracker[adId].updatePlayhead(adPlayhead);
+//       }
+// }
