@@ -1,4 +1,4 @@
-# Snoflake data ingestion
+# AWS data ingestion
 
 This project uses [Terraform](https://app.terraform.io/) for setting up the infrastructure.
 
